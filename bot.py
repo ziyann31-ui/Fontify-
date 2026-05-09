@@ -1,7 +1,7 @@
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 
 # Sirf BOT_TOKEN lagana hai
-BOT_TOKEN = "8715044389:AAHaUSJZ-tEqZuB6wjHT3yCzT-CpeBw7QfU"
+BOT_TOKEN = 
 
 # Font styles (lightweight)
 fonts = {
