@@ -13,9 +13,9 @@ from telegram.ext import (
 #                     CONFIGURATION
 # ============================================================
 
-BOT_TOKEN = "8715044389:AAHaUSJZ-tEqZuB6wjHT3yCzT-CpeBw7QfU"
-OWNER_ID = 6779799030
-BOT_USERNAME = "GetFontifyBot"
+BOT_TOKEN = 
+OWNER_ID = 
+BOT_USERNAME =
 
 # ============================================================
 #                     DATABASE (JSON)
