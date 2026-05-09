@@ -11,11 +11,11 @@ from telegram.ext import (
 
 # ============================================================
 #                     CONFIGURATION
-# ============================================================
+# ===========================================================
 
-BOT_TOKEN = 
-OWNER_ID = 
-BOT_USERNAME =
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+OWNER_ID = int(os.getenv("OWNER_ID"))
+BOT_USERNAME = os.getenv("BOT_USERNAME")
 
 # ============================================================
 #                     DATABASE (JSON)
