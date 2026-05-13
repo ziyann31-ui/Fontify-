@@ -1,5 +1,4 @@
 import logging
-import json
 import os
 import random
 from datetime import datetime
@@ -11,72 +10,70 @@ from telegram.ext import (
 
 # ============================================================
 #                     CONFIGURATION
-# ===========================================================
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-OWNER_ID = int(os.getenv("OWNER_ID"))
-BOT_USERNAME = os.getenv("BOT_USERNAME")
-
-# ============================================================
-#                     DATABASE (JSON)
 # ============================================================
 
-DB_FILE = os.path.join(os.path.dirname(__file__), "database.json")
+BOT_TOKEN = "8715044389:AAHaUSJZ-tEqZuB6wjHT3yCzT-CpeBw7QfU"
+OWNER_ID = 6779799030
+BOT_USERNAME = "GetFontifyBot"
+
+# ============================================================
+#                     DATABASE (MongoDB)
+# ============================================================
+
+from pymongo import MongoClient
+
+MONGO_URI = "mongodb+srv://Fontify2311:Fontify23112008@cluster0.4ftblou.mongodb.net/?appName=Cluster0"
 
 class Database:
     def __init__(self):
-        self.data = self._load()
-
-    def _load(self):
-        if os.path.exists(DB_FILE):
-            try:
-                with open(DB_FILE, "r") as f:
-                    return json.load(f)
-            except Exception:
-                pass
-        return {"users": {}, "groups": {}, "usage_log": []}
-
-    def _save(self):
-        with open(DB_FILE, "w") as f:
-            json.dump(self.data, f, indent=2)
+        self.client = MongoClient(MONGO_URI)
+        self.db = self.client["fontify_db"]
+        self.users = self.db["users"]
+        self.groups = self.db["groups"]
+        self.usage_log = self.db["usage_log"]
 
     def add_user(self, user_id, username, name):
         uid = str(user_id)
-        if uid not in self.data["users"]:
-            self.data["users"][uid] = {
-                "user_id": user_id,
+        existing = self.users.find_one({"user_id": uid})
+        if not existing:
+            self.users.insert_one({
+                "user_id": uid,
                 "username": username,
                 "name": name,
                 "usage_count": 0,
                 "joined_date": datetime.now().strftime("%Y-%m-%d"),
-            }
+            })
         else:
-            self.data["users"][uid]["username"] = username
-            self.data["users"][uid]["name"] = name
-        self._save()
+            self.users.update_one(
+                {"user_id": uid},
+                {"$set": {"username": username, "name": name}}
+            )
 
     def log_usage(self, user_id):
         uid = str(user_id)
         today = datetime.now().strftime("%Y-%m-%d")
-        if uid in self.data["users"]:
-            self.data["users"][uid]["usage_count"] = self.data["users"][uid].get("usage_count", 0) + 1
-            self.data["users"][uid]["last_used"] = today
-        self.data["usage_log"].append({"user_id": user_id, "date": today})
-        if len(self.data["usage_log"]) > 1000:
-            self.data["usage_log"] = self.data["usage_log"][-1000:]
-        self._save()
+        self.users.update_one(
+            {"user_id": uid},
+            {"$inc": {"usage_count": 1}, "$set": {"last_used": today}}
+        )
+        self.usage_log.insert_one({"user_id": user_id, "date": today})
 
     def get_user_stats(self, user_id):
         uid = str(user_id)
-        return self.data["users"].get(uid, {"usage_count": 0, "joined_date": "N/A"})
+        user = self.users.find_one({"user_id": uid})
+        if user:
+            return {"usage_count": user.get("usage_count", 0), "joined_date": user.get("joined_date", "N/A"), "last_used": user.get("last_used", "N/A")}
+        return {"usage_count": 0, "joined_date": "N/A"}
 
     def get_global_stats(self):
         today = datetime.now().strftime("%Y-%m-%d")
-        total_users = len(self.data["users"])
-        total_usage = sum(u.get("usage_count", 0) for u in self.data["users"].values())
-        today_log = [l for l in self.data["usage_log"] if l.get("date") == today]
-        today_users = len(set(l["user_id"] for l in today_log))
-        today_usage = len(today_log)
+        total_users = self.users.count_documents({})
+        pipeline = [{"$group": {"_id": None, "total": {"$sum": "$usage_count"}}}]
+        result = list(self.users.aggregate(pipeline))
+        total_usage = result[0]["total"] if result else 0
+        today_logs = list(self.usage_log.find({"date": today}))
+        today_users = len(set(l["user_id"] for l in today_logs))
+        today_usage = len(today_logs)
         return {
             "total_users": total_users,
             "total_usage": total_usage,
@@ -85,34 +82,24 @@ class Database:
         }
 
     def add_group(self, chat_id, title):
-        if "groups" not in self.data:
-            self.data["groups"] = {}
         gid = str(chat_id)
-        self.data["groups"][gid] = {
-            "chat_id": chat_id,
-            "title": title,
-            "added_date": datetime.now().strftime("%Y-%m-%d"),
-        }
-        self._save()
+        self.groups.update_one(
+            {"chat_id": gid},
+            {"$set": {"chat_id": gid, "title": title, "added_date": datetime.now().strftime("%Y-%m-%d")}},
+            upsert=True
+        )
 
     def remove_group(self, chat_id):
-        if "groups" not in self.data:
-            return
-        self.data["groups"].pop(str(chat_id), None)
-        self._save()
+        self.groups.delete_one({"chat_id": str(chat_id)})
 
     def get_all_groups(self):
-        if "groups" not in self.data:
-            return []
-        return [int(gid) for gid in self.data["groups"].keys()]
+        return [int(g["chat_id"]) for g in self.groups.find()]
 
     def get_all_users(self):
-        return [int(uid) for uid in self.data["users"].keys()]
+        return [int(u["user_id"]) for u in self.users.find()]
 
     def get_recent_users(self, limit=10):
-        users = list(self.data["users"].values())
-        users.sort(key=lambda u: u.get("usage_count", 0), reverse=True)
-        return users[:limit]
+        return list(self.users.find().sort("usage_count", -1).limit(limit))
 
 db = Database()
 
@@ -436,7 +423,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("✨ Fonts List", callback_data="fonts_list"),
          InlineKeyboardButton("📊 My Stats", callback_data="my_stats")],
         [InlineKeyboardButton("ℹ️ How to Use", callback_data="how_to_use"),
-         InlineKeyboardButton("📢 Channel", url="https://t.me/YOUR_CHANNEL")],
+         InlineKeyboardButton("📢 Channel", url="https://t.me/botverse_updates")],
         [InlineKeyboardButton("➕ Add to Group", url=f"https://t.me/{BOT_USERNAME}?startgroup=true")],
     ]
     await update.message.reply_text(
@@ -605,7 +592,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("✨ Fonts List", callback_data="fonts_list"),
              InlineKeyboardButton("📊 My Stats", callback_data="my_stats")],
             [InlineKeyboardButton("ℹ️ How to Use", callback_data="how_to_use"),
-             InlineKeyboardButton("📢 Channel", url="https://t.me/YOUR_CHANNEL")],
+             InlineKeyboardButton("📢 Channel", url="https://t.me/botverse_updates")],
             [InlineKeyboardButton("➕ Add to Group", url=f"https://t.me/{BOT_USERNAME}?startgroup=true")],
         ]
         await query.edit_message_text(
