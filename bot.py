@@ -7,27 +7,19 @@ from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     CallbackQueryHandler, ChatMemberHandler, filters, ContextTypes
 )
+from pymongo import MongoClient
 
 # ============================================================
 #                     CONFIGURATION
 # ============================================================
-import os
-
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 OWNER_ID = int(os.environ.get("OWNER_ID"))
 MONGO_URI = os.environ.get("MONGO_URI")
 BOT_USERNAME = os.environ.get("BOT_USERNAME")
 
-
 # ============================================================
 #                     DATABASE (MongoDB)
 # ============================================================
-
-from pymongo import MongoClient
-
-import os
-MONGO_URI = os.getenv("MONGO_URI")
-
 class Database:
     def __init__(self):
         self.client = MongoClient(MONGO_URI)
@@ -110,7 +102,6 @@ db = Database()
 # ============================================================
 #                     FONTS (37+)
 # ============================================================
-
 ALPHA = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 def make_map(normal, styled):
@@ -412,14 +403,12 @@ def convert_text(text, font_name):
 # ============================================================
 #                     LOGGING
 # ============================================================
-
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ============================================================
-#                     HANDLERS
+#                     HANDLERS (start, handle_text, callback, etc.)
 # ============================================================
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     db.add_user(user.id, user.username or "", user.first_name or "")
@@ -440,7 +429,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     message = update.message
@@ -448,7 +436,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text.startswith("/"):
         return
 
-    # In groups/supergroups: only reply if bot is tagged or someone replied to bot's message
     chat_type = message.chat.type
     if chat_type in ("group", "supergroup"):
         bot_username = f"@{BOT_USERNAME}"
@@ -460,7 +447,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         if not is_mentioned and not is_reply_to_bot:
             return
-        # Strip the bot mention from the text before processing
         text = text.replace(bot_username, "").replace(bot_username.lower(), "").strip()
         if not text:
             await message.reply_text("Text bhi likho! Jaise: @GetFontifyBot Hello World")
@@ -469,7 +455,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.add_user(user.id, user.username or "", user.first_name or "")
     db.log_usage(user.id)
 
-    # Show category buttons, store original text in callback data (max 30 chars)
     preview = text[:30]
     keyboard = [
         [InlineKeyboardButton("🔤 Bold & Italic",    callback_data=f"cat_bold|{preview}"),
@@ -486,13 +471,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
 
-    # ── Category selection ──────────────────────────────────
     if data.startswith("cat_"):
         parts = data.split("|", 1)
         cat = parts[0].replace("cat_", "")
@@ -502,7 +485,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         row = []
         for i, font in enumerate(fonts_in_cat):
             converted = convert_text(text, font)
-            # Truncate preview if too long for button label
             label = converted[:20] if len(converted) > 20 else converted
             row.append(InlineKeyboardButton(label, callback_data=f"font_{font}|{text}"))
             if len(row) == 2:
@@ -517,7 +499,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # ── Font selected — show result ─────────────────────────
     elif data.startswith("font_"):
         parts = data.split("|", 1)
         font_key = parts[0].replace("font_", "")
@@ -532,7 +513,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # ── Back to main category view ──────────────────────────
     elif data.startswith("back_main|"):
         text = data.replace("back_main|", "")
         preview = text[:30]
@@ -551,7 +531,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # ── My Stats ────────────────────────────────────────────
     elif data == "my_stats":
         user = query.from_user
         stats = db.get_user_stats(user.id)
@@ -565,7 +544,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # ── Fonts list ──────────────────────────────────────────
     elif data == "fonts_list":
         font_list = "\n".join(f"• {f}" for f in FONTS.keys())
         await query.edit_message_text(
@@ -574,7 +552,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # ── How to use ──────────────────────────────────────────
     elif data == "how_to_use":
         await query.edit_message_text(
             "ℹ️ *How to Use Font Crafter Bot*\n\n"
@@ -589,7 +566,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    # ── Back to start ────────────────────────────────────────
     elif data == "back_start":
         user = query.from_user
         keyboard = [
@@ -609,11 +585,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-
 # ============================================================
 #                  GROUP JOIN / LEAVE HANDLER
 # ============================================================
-
 async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = update.my_chat_member
     if not result:
@@ -621,18 +595,16 @@ async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = result.chat
     new_status = result.new_chat_member.status
     if chat.type in ("group", "supergroup", "channel"):
-        if new_status in ("member", "administrator"):
+        if new_status in ("member", "administrator", "creator"):
             db.add_group(chat.id, chat.title or "")
             logger.info(f"Added to group: {chat.title} ({chat.id})")
         elif new_status in ("left", "kicked", "banned"):
             db.remove_group(chat.id)
             logger.info(f"Removed from group: {chat.title} ({chat.id})")
 
-
 # ============================================================
 #                  OWNER / ADMIN COMMANDS
 # ============================================================
-
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ You are not authorized.")
@@ -651,7 +623,6 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚡ Today Usage: {s['today_usage']}\n\n"
         f"🏆 Top 5 Users:\n{top_text}"
     )
-
 
 async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
@@ -677,7 +648,6 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📤 Sent: {sent} | ❌ Failed: {failed}"
     )
 
-
 async def users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ You are not authorized.")
@@ -690,14 +660,30 @@ async def users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👥 Top Users\n\n" + "\n".join(lines)
     )
 
-
 # ============================================================
-#                     MAIN
+#                     WEB SERVICE + POLLING (DUMMY FLASK)
 # ============================================================
+from flask import Flask
+import threading
 
-def main():
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def health_check():
+    return "Fontify Bot is running with polling!", 200
+
+@flask_app.route('/health')
+def health():
+    return "OK", 200
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    flask_app.run(host="0.0.0.0", port=port)
+
+def run_bot():
+    # Build application
     app = Application.builder().token(BOT_TOKEN).build()
-
+    # Add handlers
     app.add_handler(ChatMemberHandler(track_group, ChatMemberHandler.MY_CHAT_MEMBER))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("stats", stats_cmd))
@@ -705,9 +691,16 @@ def main():
     app.add_handler(CommandHandler("users", users_cmd))
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-
-    logger.info("Bot starting...")
+    # Start polling
+    logger.info("Starting bot polling...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+def main():
+    # Start bot in background thread
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+    # Run Flask web server (main thread) to satisfy Render's web service
+    run_flask()
 
 if __name__ == "__main__":
     main()
