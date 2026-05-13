@@ -11,10 +11,13 @@ from telegram.ext import (
 # ============================================================
 #                     CONFIGURATION
 # ============================================================
+import os
 
-BOT_TOKEN =
-OWNER_ID = 
-BOT_USERNAME = "GetFontifyBot"
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+OWNER_ID = int(os.environ.get("OWNER_ID"))
+MONGO_URI = os.environ.get("MONGO_URI")
+BOT_USERNAME = os.environ.get("BOT_USERNAME")
+
 
 # ============================================================
 #                     DATABASE (MongoDB)
