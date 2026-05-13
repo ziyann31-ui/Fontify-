@@ -25,7 +25,8 @@ BOT_USERNAME = os.environ.get("BOT_USERNAME")
 
 from pymongo import MongoClient
 
-MONGO_URI = 
+import os
+MONGO_URI = os.getenv("MONGO_URI")
 
 class Database:
     def __init__(self):
