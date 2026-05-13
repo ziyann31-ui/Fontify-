@@ -12,8 +12,8 @@ from telegram.ext import (
 #                     CONFIGURATION
 # ============================================================
 
-BOT_TOKEN = "8715044389:AAHaUSJZ-tEqZuB6wjHT3yCzT-CpeBw7QfU"
-OWNER_ID = 6779799030
+BOT_TOKEN =
+OWNER_ID = 
 BOT_USERNAME = "GetFontifyBot"
 
 # ============================================================
@@ -22,7 +22,7 @@ BOT_USERNAME = "GetFontifyBot"
 
 from pymongo import MongoClient
 
-MONGO_URI = "mongodb+srv://Fontify2311:Fontify23112008@cluster0.4ftblou.mongodb.net/?appName=Cluster0"
+MONGO_URI = 
 
 class Database:
     def __init__(self):
