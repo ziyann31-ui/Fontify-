@@ -12,9 +12,9 @@ from telegram.ext import (
 #                     CONFIGURATION
 # ============================================================
 
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-OWNER_ID = int(os.environ["OWNER_ID"])
-BOT_USERNAME = os.environ["BOT_USERNAME"]
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+OWNER_ID = int(os.environ.get("OWNER_ID", "6779799030"))
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "GetFontifyBot")
 
 # ============================================================
 #                     DATABASE (MongoDB)
@@ -22,7 +22,7 @@ BOT_USERNAME = os.environ["BOT_USERNAME"]
 
 from pymongo import MongoClient
 
-MONGO_URI = os.environ["MONGO_URI"]
+MONGO_URI = os.environ.get("MONGO_URI", "")
 
 class Database:
     def __init__(self):
@@ -444,6 +444,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text.startswith("/"):
         return
 
+    # In groups/supergroups: only reply if bot is tagged or someone replied to bot's message
     chat_type = message.chat.type
     if chat_type in ("group", "supergroup"):
         bot_username = f"@{BOT_USERNAME}"
@@ -455,14 +456,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         if not is_mentioned and not is_reply_to_bot:
             return
+        # Strip the bot mention from the text before processing
         text = text.replace(bot_username, "").replace(bot_username.lower(), "").strip()
         if not text:
-            await message.reply_text(f"Text bhi likho! Jaise: @{BOT_USERNAME} Hello World")
+            await message.reply_text("Text bhi likho! Jaise: @GetFontifyBot Hello World")
             return
 
     db.add_user(user.id, user.username or "", user.first_name or "")
     db.log_usage(user.id)
 
+    # Show category buttons, store original text in callback data (max 30 chars)
     preview = text[:30]
     keyboard = [
         [InlineKeyboardButton("🔤 Bold & Italic",    callback_data=f"cat_bold|{preview}"),
@@ -485,6 +488,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
 
+    # ── Category selection ──────────────────────────────────
     if data.startswith("cat_"):
         parts = data.split("|", 1)
         cat = parts[0].replace("cat_", "")
@@ -494,6 +498,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         row = []
         for i, font in enumerate(fonts_in_cat):
             converted = convert_text(text, font)
+            # Truncate preview if too long for button label
             label = converted[:20] if len(converted) > 20 else converted
             row.append(InlineKeyboardButton(label, callback_data=f"font_{font}|{text}"))
             if len(row) == 2:
@@ -508,6 +513,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+    # ── Font selected — show result ─────────────────────────
     elif data.startswith("font_"):
         parts = data.split("|", 1)
         font_key = parts[0].replace("font_", "")
@@ -522,6 +528,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+    # ── Back to main category view ──────────────────────────
     elif data.startswith("back_main|"):
         text = data.replace("back_main|", "")
         preview = text[:30]
@@ -540,6 +547,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+    # ── My Stats ────────────────────────────────────────────
     elif data == "my_stats":
         user = query.from_user
         stats = db.get_user_stats(user.id)
@@ -553,6 +561,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+    # ── Fonts list ──────────────────────────────────────────
     elif data == "fonts_list":
         font_list = "\n".join(f"• {f}" for f in FONTS.keys())
         await query.edit_message_text(
@@ -561,6 +570,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+    # ── How to use ──────────────────────────────────────────
     elif data == "how_to_use":
         await query.edit_message_text(
             "ℹ️ *How to Use Font Crafter Bot*\n\n"
@@ -575,6 +585,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+    # ── Back to start ────────────────────────────────────────
     elif data == "back_start":
         user = query.from_user
         keyboard = [
@@ -680,7 +691,27 @@ async def users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #                     MAIN
 # ============================================================
 
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Fontify Bot is alive!")
+    def log_message(self, *args): pass
+
+def run_health_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    logger.info(f"Health server on port {port}")
+    server.serve_forever()
+
 def main():
+    # Start health check server
+    t = threading.Thread(target=run_health_server, daemon=True)
+    t.start()
+
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(ChatMemberHandler(track_group, ChatMemberHandler.MY_CHAT_MEMBER))
@@ -691,7 +722,7 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    logger.info("Bot starting...")
+    logger.info("Fontify Bot starting...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
