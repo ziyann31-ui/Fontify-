@@ -7,19 +7,23 @@ from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     CallbackQueryHandler, ChatMemberHandler, filters, ContextTypes
 )
-from pymongo import MongoClient
 
 # ============================================================
 #                     CONFIGURATION
 # ============================================================
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-OWNER_ID = int(os.environ.get("OWNER_ID"))
-MONGO_URI = os.environ.get("MONGO_URI")
-BOT_USERNAME = os.environ.get("BOT_USERNAME")
+
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+OWNER_ID = int(os.environ["OWNER_ID"])
+BOT_USERNAME = os.environ["BOT_USERNAME"]
 
 # ============================================================
 #                     DATABASE (MongoDB)
 # ============================================================
+
+from pymongo import MongoClient
+
+MONGO_URI = os.environ["MONGO_URI"]
+
 class Database:
     def __init__(self):
         self.client = MongoClient(MONGO_URI)
@@ -102,6 +106,7 @@ db = Database()
 # ============================================================
 #                     FONTS (37+)
 # ============================================================
+
 ALPHA = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 def make_map(normal, styled):
@@ -403,12 +408,14 @@ def convert_text(text, font_name):
 # ============================================================
 #                     LOGGING
 # ============================================================
+
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ============================================================
-#                     HANDLERS (start, handle_text, callback, etc.)
+#                     HANDLERS
 # ============================================================
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     db.add_user(user.id, user.username or "", user.first_name or "")
@@ -428,6 +435,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
+
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -449,7 +457,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         text = text.replace(bot_username, "").replace(bot_username.lower(), "").strip()
         if not text:
-            await message.reply_text("Text bhi likho! Jaise: @GetFontifyBot Hello World")
+            await message.reply_text(f"Text bhi likho! Jaise: @{BOT_USERNAME} Hello World")
             return
 
     db.add_user(user.id, user.username or "", user.first_name or "")
@@ -470,6 +478,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
+
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -585,9 +594,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+
 # ============================================================
 #                  GROUP JOIN / LEAVE HANDLER
 # ============================================================
+
 async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = update.my_chat_member
     if not result:
@@ -595,16 +606,18 @@ async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = result.chat
     new_status = result.new_chat_member.status
     if chat.type in ("group", "supergroup", "channel"):
-        if new_status in ("member", "administrator", "creator"):
+        if new_status in ("member", "administrator"):
             db.add_group(chat.id, chat.title or "")
             logger.info(f"Added to group: {chat.title} ({chat.id})")
         elif new_status in ("left", "kicked", "banned"):
             db.remove_group(chat.id)
             logger.info(f"Removed from group: {chat.title} ({chat.id})")
 
+
 # ============================================================
 #                  OWNER / ADMIN COMMANDS
 # ============================================================
+
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ You are not authorized.")
@@ -623,6 +636,7 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚡ Today Usage: {s['today_usage']}\n\n"
         f"🏆 Top 5 Users:\n{top_text}"
     )
+
 
 async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
@@ -648,6 +662,7 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📤 Sent: {sent} | ❌ Failed: {failed}"
     )
 
+
 async def users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ You are not authorized.")
@@ -660,30 +675,14 @@ async def users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👥 Top Users\n\n" + "\n".join(lines)
     )
 
+
 # ============================================================
-#                     WEB SERVICE + POLLING (DUMMY FLASK)
+#                     MAIN
 # ============================================================
-from flask import Flask
-import threading
 
-flask_app = Flask(__name__)
-
-@flask_app.route('/')
-def health_check():
-    return "Fontify Bot is running with polling!", 200
-
-@flask_app.route('/health')
-def health():
-    return "OK", 200
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    flask_app.run(host="0.0.0.0", port=port)
-
-def run_bot():
-    # Build application
+def main():
     app = Application.builder().token(BOT_TOKEN).build()
-    # Add handlers
+
     app.add_handler(ChatMemberHandler(track_group, ChatMemberHandler.MY_CHAT_MEMBER))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("stats", stats_cmd))
@@ -691,16 +690,9 @@ def run_bot():
     app.add_handler(CommandHandler("users", users_cmd))
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    # Start polling
-    logger.info("Starting bot polling...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
-def main():
-    # Start bot in background thread
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
-    # Run Flask web server (main thread) to satisfy Render's web service
-    run_flask()
+    logger.info("Bot starting...")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
