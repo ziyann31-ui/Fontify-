@@ -692,6 +692,7 @@ async def users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 
 import threading
+import asyncio
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -707,8 +708,8 @@ def run_health_server():
     logger.info(f"Health server on port {port}")
     server.serve_forever()
 
-def main():
-    # Start health check server
+async def main():
+    # Start health check server in background thread
     t = threading.Thread(target=run_health_server, daemon=True)
     t.start()
 
@@ -723,7 +724,12 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
     logger.info("Fontify Bot starting...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+    
+    # Keep running
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
